@@ -1,0 +1,79 @@
+Resources:
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: allowSqs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:ChangeMessageVisibility
+                Resource: !GetAtt MyQueue.Arn
+
+  LambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          const SQS = require('aws-sdk/clients/sqs');
+          const sqsClient = new SQS();
+          exports.handler = (event, context, callback) => {
+            const params = {
+              MessageBody: 'Hi how are you?',
+              QueueUrl: process.env.QUEUE_URL
+            };
+            sqsClient.sendMessage(params, function(err, data) {
+              if (err) {
+                console.log(err);
+                callback(err);
+              } else {
+                console.log('Sent Success', data.MessageId);
+                callback(null, 'Success');
+              }
+            });
+          };
+      Runtime: nodejs8.10
+      Timeout: 10
+      Environment:
+        Variables:
+          QUEUE_URL: !Ref MyQueue
+
+  LambdaFunctionEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 10
+      Enabled: false # Once true, there will be an infinite loop, around 8 invocations per second.
+      EventSourceArn: !GetAtt MyQueue.Arn
+      FunctionName: !GetAtt LambdaFunction.Arn
+
+  MyQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 60
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt MyQueueDLQ.Arn
+        maxReceiveCount: 3
+
+  MyQueueDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 604800 # default is 4 days. changed to 7 days.
