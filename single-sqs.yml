@@ -1,0 +1,3 @@
+Resources:
+  MyQueue:
+    Type: AWS::SQS::Queue
