@@ -41,19 +41,21 @@ Resources:
     Properties:
       Code:
         ZipFile: |
-          def handler(event,context):
-            return {
-              'body': 'Hello there {0}'.format(event['requestContext']['identity']['sourceIp']),
-              'headers': {
+          exports.handler = (event, context, callback) => {
+            const ip = event.requestContext.identity.sourceIp;
+            const response = {
+              body: `Hello there ${ip}`,
+              headers: {
                 'Content-Type': 'text/plain'
               },
-              'statusCode': 200
-            }
-      Description: 'My function'
+              statusCode: 200
+            };
+            callback(null, response);
+          };
       Handler: 'index.handler'
       MemorySize: 128
       Role: !GetAtt 'lambdaIAMRole.Arn'
-      Runtime: 'python2.7'
+      Runtime: nodejs8.10
       Timeout: 10
 
   lambdaApiGatewayInvoke:
