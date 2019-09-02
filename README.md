@@ -5,19 +5,19 @@ name=lambda-hello-world
 ### Validate Template
 
 ```bash
-aws cloudformation validate-template --template-body file://${name}.yml
+aws cloudformation validate-template --template-body file://templates/${name}.yml
 ```
 
 ### Create Stack
 
 ```bash
-aws cloudformation create-stack --stack-name ${name} --template-body file://${name}.yml --capabilities CAPABILITY_IAM
+aws cloudformation create-stack --stack-name ${name} --template-body file://templates/${name}.yml --capabilities CAPABILITY_IAM
 ```
 
 ### Update Stack
 
 ```
-aws cloudformation update-stack --stack-name ${name} --template-body file://${name}.yml --capabilities CAPABILITY_IAM
+aws cloudformation update-stack --stack-name ${name} --template-body file://templates/${name}.yml --capabilities CAPABILITY_IAM
 ```
 
 ### Delete Stack
