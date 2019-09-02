@@ -5,12 +5,7 @@ Parameters:
   apiGatewayStageName:
     Type: 'String'
     AllowedPattern: '^[a-z0-9]+$'
-    Default: 'call'
-
-  lambdaFunctionName:
-    Type: 'String'
-    AllowedPattern: '^[a-zA-Z0-9]+[a-zA-Z0-9-]+[a-zA-Z0-9]+$'
-    Default: 'my-function'
+    Default: 'test'
 
 Resources:
   apiGateway:
@@ -55,7 +50,6 @@ Resources:
               'statusCode': 200
             }
       Description: 'My function'
-      FunctionName: !Ref 'lambdaFunctionName'
       Handler: 'index.handler'
       MemorySize: 128
       Role: !GetAtt 'lambdaIAMRole.Arn'
@@ -82,24 +76,8 @@ Resources:
             Principal:
               Service:
                 - 'lambda.amazonaws.com'
-      Policies:
-        - PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Action:
-                  - 'logs:CreateLogGroup'
-                  - 'logs:CreateLogStream'
-                  - 'logs:PutLogEvents'
-                Effect: 'Allow'
-                Resource:
-                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${lambdaFunctionName}:*'
-          PolicyName: 'lambda'
-
-  lambdaLogGroup:
-    Type: 'AWS::Logs::LogGroup'
-    Properties:
-      LogGroupName: !Sub '/aws/lambda/${lambdaFunctionName}'
-      RetentionInDays: 90
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
 
 Outputs:
   apiGatewayInvokeURL:
