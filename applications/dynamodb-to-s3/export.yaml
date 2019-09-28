@@ -1,0 +1,144 @@
+Description: Export a DynamoDB table to S3 with a Glue Job
+Parameters:
+  TableName:
+    Type: String
+    Description: DynamoDB Table Name to export
+  MaxConsumedReadThroughput:
+    Type: Number
+    Description: The maximum amount of Read Capacity Units the export is allowed to consumed expressed as a percentage
+    MinValue: 0.001
+    MaxValue: 1.0
+    Default: 0.25
+  OutputFormat:
+    Type: String
+    Description: Output format of the export. One of avro, csv, json, orc, parquet, or xml.
+    AllowedValues:
+      - avro
+      - csv
+      - json
+      - orc
+      - parquet
+      - xml
+Resources:
+  Trigger:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      Description:
+        Fn::Sub:
+          - 'Start Export of ${Name} every night at midnight'
+          - Name:
+              Ref: TableName
+      Targets:
+        - Id: StepFunctions
+          Arn:
+            Fn::ImportValue: ExportStateMachineArn
+          RoleArn:
+            Fn::ImportValue: EventTriggerRole
+          Input:
+            Fn::Sub:
+              - |-
+                {
+                  "glue_job_name": "${GlueJobName}",
+                  "output_prefix": "${OutputPrefix}",
+                  "table_name": "${TableName}",
+                  "read_percentage": "${ReadPercentage}",
+                  "crawler_name": "${CrawlerName}",
+                  "output_format": "${OutputFormat}"
+                }
+              - GlueJobName:
+                  Fn::Sub:
+                    - '${Name}ExportTo${OutputFormat}'
+                    - Name:
+                        Ref: TableName
+                      OutputFormat:
+                        Ref: OutputFormat
+                OutputPrefix:
+                  Fn::Sub:
+                    - 's3://${Bucket}/${OutputFormat}/${TableName}'
+                    - Bucket:
+                        Fn::ImportValue: DynamoDBExportsBucket
+                      TableName:
+                        Ref: TableName
+                      OutputFormat:
+                        Ref: OutputFormat
+                OutputFormat:
+                  Ref: OutputFormat
+                ReadPercentage:
+                  Ref: MaxConsumedReadThroughput
+                CrawlerName:
+                  Fn::Sub:
+                    - '${Name}${OutputFormat}Crawler'
+                    - Name:
+                        Ref: TableName
+                      OutputFormat:
+                        Ref: OutputFormat
+      ScheduleExpression: 'cron(0 10 * * ? *)'
+      State: DISABLED
+
+  # Export table to S3 in the parquet format
+  ExportConverterGlueJob:
+    Type: 'AWS::Glue::Job'
+    Properties:
+      Name:
+        Fn::Sub:
+          - '${Name}ExportTo${OutputFormat}'
+          - Name:
+              Ref: TableName
+            OutputFormat:
+              Ref: OutputFormat
+      Role:
+        Fn::ImportValue: GlueCrawlerAndJobRole
+      MaxRetries: 3
+      Description:
+        Fn::Sub:
+          - Exports a DynamoDB table to ${OutputFormat}
+          - OutputFormat:
+              Ref: OutputFormat
+      Command:
+        # DO NOT CHANGE NAME. CloudFormation docs are wrong. Use Glue API docs:
+        # http://docs.aws.amazon.com/glue/latest/dg/aws-glue-api-jobs-job.html#aws-glue-api-jobs-job-JobCommand
+        Name: 'glueetl'
+        ScriptLocation: 's3://aws-bigdata-blog/artifacts/using-glue-to-access-dynamodb-tables/export-dynamodb-table.py'
+      AllocatedCapacity: 10
+      ExecutionProperty:
+        MaxConcurrentRuns: 3
+      DefaultArguments:
+        '--TempDir':
+          Fn::Sub:
+            - 's3://${Bucket}/glue-temp-dir'
+            - Bucket:
+                Fn::ImportValue: DynamoDBExportsBucket
+
+  GlueCrawler:
+    Type: AWS::Glue::Crawler
+    Properties:
+      Role:
+        Fn::ImportValue: GlueCrawlerAndJobRole
+      Name:
+        Fn::Sub:
+          - '${Name}${OutputFormat}Crawler'
+          - Name:
+              Ref: TableName
+            OutputFormat:
+              Ref: OutputFormat
+      Description:
+        Fn::Sub:
+          - 'Add new partitions and handle schema updates to the ${Name} table'
+          - Name:
+              Ref: TableName
+      SchemaChangePolicy:
+        UpdateBehavior: UPDATE_IN_DATABASE
+        DeleteBehavior: DELETE_FROM_DATABASE
+      DatabaseName: 'dynamodb_exports'
+      TablePrefix: 'snapshots_'
+      Targets:
+        S3Targets:
+          - Path:
+              Fn::Sub:
+                - 's3://${Bucket}/${OutputFormat}/${TableName}'
+                - Bucket:
+                    Fn::ImportValue: DynamoDBExportsBucket
+                  TableName:
+                    Ref: TableName
+                  OutputFormat:
+                    Ref: OutputFormat
